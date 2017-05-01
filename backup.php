@@ -2,7 +2,9 @@
   require 'PHPMailer/PHPMailerAutoload.php';
   $date = getdate();
 
-  echo "starting sendpepperbackup @ ".date("H:i:s on d.m.Y");
+  echo "\n\r";
+  echo "*****************************************************\n\r";
+  echo "Starting sendpepperbackup @ ".date("H:i:s d.m.Y")."\n\r";
 
   $config = parse_ini_file('/etc/pfefferback.ini'); //loades pfefferback.ini as config file
   $appid = $config["apiID"];
@@ -12,11 +14,11 @@
   //creates temp dir if not existend
   if(!is_dir($tempdir)) {
     mkdir($tempdir,0777,true);
-    echo "created dir: ".$tempdir."\n\r";
+    echo "Created dir: ".$tempdir."\n\r";
   }
   if(!is_dir($tempdir.'notes/')) {
     mkdir($tempdir.'notes/',0777,true);
-    echo "created dir: ".$tempdir."notes/\n\r";
+    echo "Created dir: ".$tempdir."notes/\n\r";
   }
 
   fetchContacts($appid,$key,$tempdir);
@@ -24,7 +26,7 @@
   createZIP($config);
   cleanup($tempdir);
 
-  echo "finished sendpepperbackup @ ".date("H:i:s on d.m.Y");
+  echo "Finished sendpepperbackup @ ".date("H:i:s d.m.Y")."\n\r";
 
   function cleanup($tempdir)
   {
@@ -38,6 +40,7 @@
       }
     }
     rmdir($tempdir);
+    echo "Cleanup finished - removed ".$tempdir." \n\r";
   }
 
 
@@ -72,6 +75,7 @@
 
     $type = 'application/zip';
     if(file_exists($zipfile)){
+      echo "Created file: ".$zipfile." \n\r";
       sendBackupMail($config,$zipfile);
     }else {
       echo "File ".$zipfile." could not be found!\n";
@@ -102,7 +106,7 @@ EOT;
       $reqType = "search";
       $postargs = "appid=".$appid."&key=".$key."&reqType=".$reqType."&data=".$data;
       $request = "https://api.moon-ray.com/cdata.php";
-      header("Content-Type: text/html; charset=utf-8");
+
       $session = curl_init($request);
       curl_setopt ($session, CURLOPT_ENCODING ,"UTF-8");
       curl_setopt ($session, CURLOPT_POST, true);
@@ -121,10 +125,12 @@ EOT;
     } //end while
 
     fclose($contactfile);
+    echo "Fetched contacts \n\r";
   }
 
   function fetchNotesForAllContacts($appid,$key,$tempdir)
   {
+    echo "Fetching notes for each contact... \n\r";
     $output_array = array("");
     $count_contacts = 0;
     $contactsfile_read = fopen($tempdir."contacts.xml", "r") or die("Unable to open file ".$tempdir."contacts.xml!");
@@ -159,7 +165,7 @@ EOT;
     curl_setopt($session, CURLOPT_RETURNTRANSFER, true);
     $response = curl_exec($session);
     curl_close($session);
-    header("Content-Type: text/xml");
+
 
     $notefile = fopen($tempdir."notes/".$contactId.".xml","w") or die("unable to open file ".$contactId.".xml in /tmp/pfefferback/notes/ !");
     fwrite($notefile, $response);
@@ -191,14 +197,14 @@ EOT;
     $mail->isHTML(true);                                  // Set email format to HTML
     $mail->Subject = '[SendPepperBackup] ' . date("d.m.Y");
 
-    $mail->Body    = 'This backup was generated at <i>'.date("H:i:s on d.m.Y").'.</i>';
+    $mail->Body    = 'This backup was generated at <i>'.date("H:i:s d.m.Y").'.</i>';
     $mail->AltBody = 'The HTML part of this mail could not be displayed.';
 
     if(!$mail->send()) {
         echo "Message could not be sent.\n\r";
         echo "Mailer Error: " . $mail->ErrorInfo . " \n\r";
     } else {
-        echo "Message has been sent\n\r";
+        echo "Mail has been sent\n\r";
     }
   }
 ?>
