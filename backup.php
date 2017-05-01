@@ -1,36 +1,73 @@
 <?php
   require 'PHPMailer/PHPMailerAutoload.php';
-
   $date = getdate();
 
-  $config = parse_ini_file('/etc/pfefferback.ini'); //loades pfefferback.ini as config file 
+  echo "starting sendpepperbackup @ ".date("H:i:s on d.m.Y");
+
+  $config = parse_ini_file('/etc/pfefferback.ini'); //loades pfefferback.ini as config file
   $appid = $config["apiID"];
   $key = $config["apiKEY"];
+  $tempdir = $config["tempDir"];
 
   //creates temp dir if not existend
-  if(!is_dir('/tmp/pfefferback/')) {
-    mkdir('/tmp/pfefferback/',0777,true);
+  if(!is_dir($tempdir)) {
+    mkdir($tempdir,0777,true);
+    echo "created dir: ".$tempdir."\n\r";
+  }
+  if(!is_dir($tempdir.'notes/')) {
+    mkdir($tempdir.'notes/',0777,true);
+    echo "created dir: ".$tempdir."notes/\n\r";
   }
 
-  $contactfile = fopen("/tmp/pfefferback/contacts.xml","w") or die("unable to open file contacts.xml in /tmp/pfefferback/ !");
-  $notefile = fopen("/tmp/pfefferback/notes.xml","w") or die("unable to open file notes.xml in /tmp/pfefferback/ !");
-
-  fetchContacts($appid,$key,$contactfile);
-  fetchNotesForAllContacts();
+  fetchContacts($appid,$key,$tempdir);
+  fetchNotesForAllContacts($appid,$key,$tempdir);
   createZIP($config);
+  cleanup($tempdir);
+
+  echo "finished sendpepperbackup @ ".date("H:i:s on d.m.Y");
+
+  function cleanup($tempdir)
+  {
+    $it = new RecursiveDirectoryIterator($tempdir, RecursiveDirectoryIterator::SKIP_DOTS);
+    $files = new RecursiveIteratorIterator($it,RecursiveIteratorIterator::CHILD_FIRST);
+    foreach($files as $file) {
+      if ($file->isDir()){
+          rmdir($file->getRealPath());
+      } else {
+          unlink($file->getRealPath());
+      }
+    }
+    rmdir($tempdir);
+  }
 
 
   function createZIP($config)
   {
+    $tempdir = $config["tempDir"];
     $heute = getdate();
     $zip = new ZipArchive();
-    $zipfile = "/tmp/pfefferback/pfefferback".$heute[0].".zip";
+    $zipfile = $tempdir."pfefferback".$heute[0].".zip";
+
+    $notesfolder = realpath($tempdir.'notes');
+
     if ($zip->open($zipfile, ZipArchive::CREATE)!==TRUE) {
       exit("cannot open <$zipfile>\n");
     }
 
-    $zip->addFile("/tmp/pfefferback/contacts.xml","contacts.xml");
-    $zip->addFile("/tmp/pfefferback/notes.xml","notes.xml");
+    $zip->addFile($tempdir."contacts.xml","contacts.xml");
+
+    // Create recursive directory iterator
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($notesfolder),RecursiveIteratorIterator::LEAVES_ONLY);
+
+    foreach ($files as $name => $file)
+    {
+      if (!$file->isDir()){ // Skip directories (they would be added automatically)
+          $filePath = $file->getRealPath(); // Get real and relative path for current file
+          $relativePath = substr($filePath, strlen($notesfolder) + 1);
+          $zip->addFile($filePath, "notes/".$relativePath); // Add current file to archive
+      }
+    }
+
     $zip->close();
 
     $type = 'application/zip';
@@ -41,8 +78,9 @@
     }
   }
 
-  function fetchContacts($appid,$key,$contactfile)
+  function fetchContacts($appid,$key,$tempdir)
   {
+    $contactfile = fopen($tempdir."contacts.xml","w") or die("unable to open file contacts.xml in ".$tempdir." !");
     $emptyPageString = "<result></result>";
     $page = 1;
     $pageIsEmpty = false;
@@ -76,7 +114,7 @@ EOT;
 
       if($response != $emptyPageString){
           fwrite($contactfile,$response);
-      }else {
+      } else {
         $pageIsEmpty = true;
       }
 
@@ -85,10 +123,49 @@ EOT;
     fclose($contactfile);
   }
 
-  function fetchNotesForAllContacts()
+  function fetchNotesForAllContacts($appid,$key,$tempdir)
   {
+    $output_array = array("");
+    $count_contacts = 0;
+    $contactsfile_read = fopen($tempdir."contacts.xml", "r") or die("Unable to open file ".$tempdir."contacts.xml!");
 
+    while(!feof($contactsfile_read)) {
+      preg_match_all("/id='([^']*?)'/", fgets($contactsfile_read), $output_array);
+      $count_contacts += count($output_array[1]);
+      foreach ($output_array[1] as $contactId) {
+        fetchNotesByContactID($appid,$key,$contactId,$tempdir);
+      }
+    }
+    fclose($contactsfile_read);
+
+    echo "Fetched notes for ".$count_contacts." contacts.\n\r";
   }
+
+
+  function fetchNotesByContactID($appid,$key,$contactId,$tempdir)
+  {
+    $data =<<<EOT
+<contact_id>$contactId</contact_id>
+EOT;
+
+    $reqType= "fetch_notes";
+    $postargs = "appid=".$appid."&key=".$key."&reqType=".$reqType."&data=".$data;
+    $request = "http://api.moon-ray.com/cdata.php";
+
+    $session = curl_init($request);
+    curl_setopt ($session, CURLOPT_POST, true);
+    curl_setopt ($session, CURLOPT_POSTFIELDS, $postargs);
+    curl_setopt($session, CURLOPT_HEADER, false);
+    curl_setopt($session, CURLOPT_RETURNTRANSFER, true);
+    $response = curl_exec($session);
+    curl_close($session);
+    header("Content-Type: text/xml");
+
+    $notefile = fopen($tempdir."notes/".$contactId.".xml","w") or die("unable to open file ".$contactId.".xml in /tmp/pfefferback/notes/ !");
+    fwrite($notefile, $response);
+    fclose($notefile);
+  }
+
 
   function sendBackupMail($config,$zipfile) {
     $smtpHost = $config["smtpHOST"];
@@ -118,10 +195,10 @@ EOT;
     $mail->AltBody = 'The HTML part of this mail could not be displayed.';
 
     if(!$mail->send()) {
-        echo 'Message could not be sent.\n';
-        echo 'Mailer Error: ' . $mail->ErrorInfo . ' \n';
+        echo "Message could not be sent.\n\r";
+        echo "Mailer Error: " . $mail->ErrorInfo . " \n\r";
     } else {
-        echo 'Message has been sent\n';
+        echo "Message has been sent\n\r";
     }
   }
 ?>
