@@ -23,10 +23,35 @@
 
   fetchContacts($appid,$key,$tempdir);
   fetchNotesForAllContacts($appid,$key,$tempdir);
+  pullTagList($appid,$key,$tempdir);
   createZIP($config);
   cleanup($tempdir);
 
   echo "Finished sendpepperbackup @ ".date("H:i:s d.m.Y")."\n\r";
+
+
+  function pullTagList($appid,$key,$tempdir)
+  {
+    $tagfile = fopen($tempdir."tagList.xml","w") or die("unable to open file tagList.xml in ".$tempdir." !");
+
+    $reqType= "pull_tag";
+    $postargs = "appid=".$appid."&key=".$key."&reqType=".$reqType;
+    $request = "https://api.moon-ray.com/cdata.php";
+
+    $session = curl_init($request);
+    curl_setopt ($session, CURLOPT_POST, true);
+    curl_setopt ($session, CURLOPT_POSTFIELDS, $postargs);
+    curl_setopt($session, CURLOPT_HEADER, false);
+    curl_setopt($session, CURLOPT_RETURNTRANSFER, true);
+    $response = curl_exec($session);
+    curl_close($session);
+
+    fwrite($tagfile,$response);
+
+    fclose($tagfile);
+    echo "Fetched Tag List \n\r";
+  }
+
 
   function cleanup($tempdir)
   {
@@ -58,6 +83,7 @@
     }
 
     $zip->addFile($tempdir."contacts.xml","contacts.xml");
+    $zip->addFile($tempdir."tagList.xml","tagList.xml");
 
     // Create recursive directory iterator
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($notesfolder),RecursiveIteratorIterator::LEAVES_ONLY);
