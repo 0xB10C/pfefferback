@@ -5,6 +5,8 @@
 SendPepper is an email marketing solution from ONTRAPORT. Customer data export was recently limited to CSV exports only.
 **pfefferback** provides full data export via the SendPepper API and mail backup. Backups can be initiated manually or by cronjob.
 
+[ONTRAPORT Contacts API](https://officeautopilot.zendesk.com/hc/en-us/articles/204514284-Contacts-API)
+
 ## installation
 requires the packages:
 - php-curl
@@ -26,7 +28,7 @@ copy pfefferback.ini to /etc/pfefferback.ini and edit:
 - mailTO
 - mailFROMNAME
 - mailTONAME
-- tempDir_
+- tempDir
 
 ## usage
 manual use: `php backup.php`
